@@ -1,0 +1,10 @@
+{
+  "classes": [
+    "Black",
+    "Blue",
+    "Orange",
+    "Red"
+  ],
+  "img_size": 96,
+  "best_train_acc": 0.9996068409671712
+}
