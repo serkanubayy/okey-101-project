@@ -23,9 +23,8 @@ IOU_TH = 0.45
 IMG_SIZE = 640
 STABLE_FRAMES_NEEDED = 8 
 MIN_READY_TILES = 12
-SAMPLE_TIMEOUT_SEC = 25.0 # Biraz daha zaman tanıdık
+SAMPLE_TIMEOUT_SEC = 25.0 
 
-# Güven ayarı: 0.60 (Ne çok katı ne çok gevşek)
 tracker = TemporalTracker(window=7, min_votes=3, conf_floor=0.30, lock_after=4, lock_min_conf=0.60)
 tile_id_manager = TileIDManager(iou_th=0.40, dist_th=95.0, ttl=10)
 
@@ -68,12 +67,41 @@ def force_spatial_cleanup(tiles, iou_thresh=0.2):
         indices = indices[1:][iou <= iou_thresh]
     return keep
 
+# --- YARDIMCI: Kullanıcıdan Gösterge İste ---
+def ask_indicator():
+    print("\n" + "!"*40)
+    print("Seko Baba, Gösterge Taşı Nedir?")
+    print("Formatlar: r13 (Kırmızı 13), b5 (Mavi 5), k1 (Siyah 1), o10 (Turuncu 10)")
+    raw = input("GİRİŞ YAP >> ").strip().lower()
+    
+    color_map = {'r': 'Red', 'b': 'Blue', 'k': 'Black', 'o': 'Orange'}
+    
+    # Varsayılan (Hata olursa)
+    selected_color = "Red"
+    selected_val = 13
+    
+    if len(raw) >= 2:
+        c_char = raw[0]
+        v_str = raw[1:]
+        if c_char in color_map:
+            selected_color = color_map[c_char]
+            try:
+                val = int(v_str)
+                if 1 <= val <= 13:
+                    selected_val = val
+            except:
+                pass
+    
+    print(f"✅ GÖSTERGE ALINDI: {selected_color} {selected_val}")
+    print("!"*40 + "\n")
+    return {"color": selected_color, "val": selected_val}
+
 cap = cv2.VideoCapture(0)
 cap.set(3, 1920)
 cap.set(4, 1080)
 
 print("\n==============================")
-print(" SEKO BABA FINAL V8 (GOLDEN)")
+print(" SEKO BABA FINAL V9 (SMART)")
 print("==============================")
 
 collecting = False
@@ -128,35 +156,25 @@ while True:
             tile_img = crop_tile(clean, xyxy)
             if tile_img is None: continue
 
-            # ==========================================
-            #  SEKO BABA RENK MAHKEMESİ (YENİ SİSTEM)
-            # ==========================================
             hsv_pred = detect_color_hsv(tile_img)
             cnn_pred, cnn_conf = predict_color(tile_img)
 
             final_color = "Unknown"
             final_conf = 0.0
 
-            # SENARYO A: İkisi de aynı şeyi söylüyorsa (Tam Uyum)
             if hsv_pred == cnn_pred and hsv_pred != "Unknown":
                 final_color = hsv_pred
                 final_conf = 1.0
-            
-            # SENARYO B: HSV kör olduysa CNN patron
             elif hsv_pred == "Unknown":
                 final_color = cnn_pred
                 final_conf = cnn_conf
-            
-            # SENARYO C: Siyah vs Kırmızı/Turuncu Çatışması (Kritik)
             elif (hsv_pred in ["Red", "Orange"] and cnn_pred == "Black"):
-                if cnn_conf > 0.85: # CNN çok eminse Siyah'tır
+                if cnn_conf > 0.85:
                     final_color = "Black"
                     final_conf = cnn_conf
                 else:
                     final_color = hsv_pred
                     final_conf = 0.70
-            
-            # SENARYO D: Tersi Durum
             elif (hsv_pred == "Black" and cnn_pred == "Red"):
                 if cnn_conf > 0.90:
                     final_color = "Red"
@@ -164,8 +182,6 @@ while True:
                 else:
                     final_color = "Black"
                     final_conf = 0.70
-
-            # SENARYO E: Diğer durumlar
             else:
                 if cnn_conf > 0.95:
                     final_color = cnn_pred
@@ -179,23 +195,15 @@ while True:
 
             if color == "Green": continue
 
-            # SAYI TESPİTİ
             num_roi = crop_number_region(tile_img)
             number_val, number_conf = (None, 0.0)
 
             if num_roi is not None:
-                # 1. Görüntüyü işle
                 processed_debug = preprocess_image(num_roi)
-                # 2. Göstermelik resize (Hata olmasın diye)
                 processed_debug = cv2.resize(processed_debug, (64, 64))
-                
-                # 3. Tahmin
                 number_val, number_conf = predict_number(num_roi)
-                
-                # 4. Ekrana yaz
                 text = str(number_val) if number_val else "?"
                 txt_color = (0, 0, 255) if number_conf > 0.60 else (0, 255, 255)
-                
                 cv2.putText(processed_debug, text, (5, 55), cv2.FONT_HERSHEY_SIMPLEX, 1.5, txt_color, 3)
                 debug_crops.append(processed_debug)
 
@@ -219,8 +227,8 @@ while True:
                     })
             
             stabilized = force_spatial_cleanup(raw_stabilized)
-            
             stabilized.sort(key=lambda t: t["box"][1])
+            
             rows = []
             if stabilized:
                 current_row = [stabilized[0]]
@@ -243,12 +251,31 @@ while True:
             print(" | ".join([f"{t['color']} {t['val']}" for t in final_sorted]))
             
             if len(final_sorted) >= MIN_READY_TILES:
-                perler, puan = zeka.find_best_hand(final_sorted)
-                print(f"\n--- PUAN: {puan} ---")
-                if perler:
-                    for j, p in enumerate(perler):
-                        per_str = ' - '.join([f"{t['color']}{t['val']}" for t in p])
-                        print(f"Per {j+1}: {per_str}")
+                gosterge_tasi = ask_indicator()
+
+                # Zekadan sonuç sözlüğü (dict) alıyoruz artık
+                sonuc = zeka.find_best_hand(final_sorted, gosterge_tasi)
+                
+                print(f"🃏 JOKER: {sonuc['joker_info']}")
+                print(f"💰 SERİ PUANI: {sonuc['score']} (Baraj: 101)")
+                print(f"👯 ÇİFT SAYISI: {sonuc['pair_count']} (Hedef: 5)")
+                
+                print("\n--- SERİ/PER DİZİLİMİ ---")
+                if sonuc['best_hand']:
+                    for j, p in enumerate(sonuc['best_hand']):
+                        per_puan = sum(t.get('virtual_val', t['val']) for t in p)
+                        per_str = ' - '.join([f"{t['color']}{t['val']}{t.get('virtual_str','')}" for t in p])
+                        print(f"   Per {j+1}: {per_str}  [Puan: {per_puan}]")
+                else:
+                    print("   (Per bulunamadı)")
+
+                print("\n--- ÇİFTLER ---")
+                if sonuc['pairs']:
+                    for p in sonuc['pairs']:
+                        print(f"   [{p[0]['color']}{p[0]['val']}] - [{p[1]['color']}{p[1]['val']}{p[1].get('virtual_str','')}]")
+                else:
+                    print("   (Çift bulunamadı)")
+
             print("="*40 + "\n")
             collecting = False
 
