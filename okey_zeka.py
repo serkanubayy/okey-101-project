@@ -13,8 +13,7 @@ class OkeyZeka:
         j_val = indicator_tile["val"] + 1
         if j_val > 13: j_val = 1
         
-        print(f"🧠 ANALİZ (Çift Joker V2) -> GÖSTERGE: {indicator_tile['color']}{indicator_tile['val']} | JOKER: {j_color}{j_val}")
-
+        # Taşları ve Jokerleri Ayır
         normal_tiles = []
         wildcards = [] 
 
@@ -36,6 +35,9 @@ class OkeyZeka:
                 wildcards.append(tile_obj)
             else:
                 normal_tiles.append(tile_obj)
+        
+        print(f"🧠 ANALİZ RAPORU -> GÖSTERGE: {indicator_tile['color']}{indicator_tile['val']} | JOKER: {j_color}{j_val}")
+        print(f"👀 TESPİT EDİLEN JOKER SAYISI: {len(wildcards)}")
                 
         return normal_tiles, wildcards, (j_color, j_val)
 
@@ -62,15 +64,14 @@ class OkeyZeka:
                 used_ids.add(t1['id'])
                 used_ids.add(t2['id'])
         
-        # 2. Jokerli Çiftler
-        # Elimizde kalan jokerleri, eşleşmemiş en yüksek taşlarla çiftle.
+        # 2. Jokerli Çiftler (Tek tek eşleştir)
         if wildcards:
             leftovers = [t for t in sorted_tiles if t['id'] not in used_ids]
             leftovers.sort(key=lambda x: x['val'], reverse=True)
             
             wc_idx = 0
             for t in leftovers:
-                if wc_idx >= len(wildcards): break
+                if wc_idx >= len(wildcards): break # Joker bittiyse dur
                 
                 ghost = wildcards[wc_idx].copy()
                 ghost['virtual_val'] = t['val']
@@ -82,7 +83,7 @@ class OkeyZeka:
         return pairs
 
     # ==========================================
-    # 3. TÜM OLASILIKLARI ÜRET (GELİŞTİRİLMİŞ)
+    # 3. TÜM OLASILIKLARI ÜRET
     # ==========================================
     def get_all_candidates(self, normal_tiles, wildcards):
         candidates = []
@@ -93,10 +94,8 @@ class OkeyZeka:
         candidates.extend(runs_pure)
         candidates.extend(sets_pure)
 
-        # B) JOKERLİ PERLER
-        # Önemli Değişiklik: Joker havuzunu fonksiyona paslıyoruz.
-        # Fonksiyon her bir joker için ayrı ayrı ve kombinasyonlu ihtimaller üretecek.
-        if wildcards:
+        # B) JOKERLİ PERLER (Sadece Joker varsa girer)
+        if len(wildcards) > 0:
             runs_wild = self.find_wildcard_runs(normal_tiles, wildcards)
             sets_wild = self.find_wildcard_sets(normal_tiles, wildcards)
             candidates.extend(runs_wild)
@@ -112,7 +111,6 @@ class OkeyZeka:
         for col, lst in by_color.items():
             lst.sort(key=lambda x: x["val"])
             ext_list = self._add_14s(lst)
-            
             curr = [ext_list[0]]
             for i in range(1, len(ext_list)):
                 if ext_list[i]["val"] == curr[-1]["val"] + 1:
@@ -122,7 +120,6 @@ class OkeyZeka:
                 else:
                     if len(curr) >= 3: runs.append(self._fix_14s(curr))
                     curr = [ext_list[i]]
-            
             if len(curr) >= 3: runs.append(self._fix_14s(curr))
         return runs
 
@@ -130,7 +127,6 @@ class OkeyZeka:
         sets = []
         by_val = defaultdict(list)
         for t in tiles: by_val[t["val"]].append(t)
-        
         for val, lst in by_val.items():
             uniqs = list({t["color"]: t for t in lst}.values())
             if len(uniqs) >= 3:
@@ -140,7 +136,7 @@ class OkeyZeka:
                         sets.append(list(c))
         return sets
 
-    # --- JOKERLİ SERİLER (YENİLENDİ: MULTI-JOKER) ---
+    # --- JOKERLİ SERİLER ---
     def find_wildcard_runs(self, normal_tiles, wildcards):
         generated = []
         
@@ -151,46 +147,37 @@ class OkeyZeka:
             lst.sort(key=lambda x: x["val"])
             ext_list = self._add_14s(lst)
             
-            # Strateji: Her aralığa bak, eğer 1 eksik varsa TEK JOKER, 2 eksik varsa ÇİFT JOKER dene.
-            # Ve bunu mevcut HER JOKER KOMBİNASYONU için yap.
-            
-            # --- TEK JOKERLİ İHTİMALLER ---
-            for i in range(len(ext_list) - 1):
-                t1 = ext_list[i]
-                for j in range(i+1, min(i+4, len(ext_list))): 
-                    t2 = ext_list[j]
-                    diff = t2["val"] - t1["val"]
-                    
-                    # 1. ARA BOŞLUK (3 _ 5)
-                    if diff == 2:
-                        for w_idx, joker in enumerate(wildcards):
-                            ghost = joker.copy()
+            # --- TEK JOKER KULLANIMI ---
+            for joker_idx, okey_stone in enumerate(wildcards):
+                for i in range(len(ext_list) - 1):
+                    t1 = ext_list[i]
+                    for j in range(i+1, min(i+4, len(ext_list))): 
+                        t2 = ext_list[j]
+                        diff = t2["val"] - t1["val"]
+                        
+                        # 1. ARA BOŞLUK (3 _ 5) -> Tek Joker
+                        if diff == 2:
+                            ghost = okey_stone.copy()
                             ghost["virtual_val"] = t1["val"] + 1
-                            ghost["virtual_str"] = "(OKEY)"
-                            group = [t1, ghost, t2]
-                            generated.append(self._fix_14s(group))
+                            ghost["virtual_str"] = f"(OKEY)"
+                            generated.append(self._fix_14s([t1, ghost, t2]))
                     
-                    # 2. YAN YANA (10 11) -> (10 11 OKEY) veya (OKEY 10 11)
-                    if diff == 1:
-                        for w_idx, joker in enumerate(wildcards):
-                            # Sona ekle
+                        # 2. YAN YANA (10 11) -> (10 11 OKEY)
+                        if diff == 1:
                             if t2["val"] < 14:
-                                g_tail = joker.copy()
+                                g_tail = okey_stone.copy()
                                 g_tail["virtual_val"] = t2["val"] + 1
-                                g_tail["virtual_str"] = "(OKEY)"
+                                g_tail["virtual_str"] = f"(OKEY)"
                                 generated.append(self._fix_14s([t1, t2, g_tail]))
-                            # Başa ekle
                             if t1["val"] > 1:
-                                g_head = joker.copy()
+                                g_head = okey_stone.copy()
                                 g_head["virtual_val"] = t1["val"] - 1
-                                g_head["virtual_str"] = "(OKEY)"
+                                g_head["virtual_str"] = f"(OKEY)"
                                 generated.append(self._fix_14s([g_head, t1, t2]))
 
-            # --- ÇİFT JOKERLİ İHTİMALLER (3 _ _ 6) ---
+            # --- ÇİFT JOKER KULLANIMI (SADECE 2+ JOKER VARSA) ---
             if len(wildcards) >= 2:
-                # Elimizdeki joker çiftlerini al (J1+J2 gibi)
                 j_pairs = list(itertools.combinations(wildcards, 2))
-                
                 for i in range(len(ext_list) - 1):
                     t1 = ext_list[i]
                     for j in range(i+1, min(i+5, len(ext_list))):
@@ -214,27 +201,22 @@ class OkeyZeka:
         for val, lst in by_val.items():
             uniqs = list({t["color"]: t for t in lst}.values())
             
-            # Tek Jokerli Set (2 taş + 1 J)
+            # Tek Jokerli
             if len(uniqs) >= 2:
                 for joker in wildcards:
-                    # Sadece 2'lileri tamamla (3'lü zaten tamdır, 4'lüye zorlama şimdilik)
-                    if len(uniqs) == 2:
-                        ghost = joker.copy()
-                        ghost["virtual_val"] = val
-                        ghost["virtual_str"] = "(OKEY)"
-                        generated.append(uniqs + [ghost])
+                    ghost = joker.copy()
+                    ghost["virtual_val"] = val
+                    ghost["virtual_str"] = "(OKEY)"
+                    generated.append(uniqs + [ghost])
                         
-            # Çift Jokerli Set (1 taş + 2 J) -> Örn: Kırmızı 10 - OKEY - OKEY
+            # Çift Jokerli (SADECE 2+ JOKER VARSA)
             if len(uniqs) >= 1 and len(wildcards) >= 2:
                 j_pairs = list(itertools.combinations(wildcards, 2))
                 for (j1, j2) in j_pairs:
-                    # Elimizde tek bir taş varsa ve 2 okey varsa 3'lü set yapabiliriz.
-                    # Örn: Siyah 10 - J - J
                     t = uniqs[0]
                     g1 = j1.copy(); g1["virtual_val"] = val; g1["virtual_str"] = "(OKEY)"
                     g2 = j2.copy(); g2["virtual_val"] = val; g2["virtual_str"] = "(OKEY)"
                     generated.append([t, g1, g2])
-
         return generated
 
     def _add_14s(self, lst):
@@ -260,37 +242,26 @@ class OkeyZeka:
         return fixed
 
     # ==========================================
-    # 4. EN İYİ ELİ BUL (GELİŞMİŞ BACKTRACKING)
+    # 4. EN İYİ ELİ BUL
     # ==========================================
     def find_best_hand(self, detected_tiles, indicator_tile):
         normal, wildcards, (j_col, j_val) = self.parse_tiles(detected_tiles, indicator_tile)
         
-        # 1. Tüm Adayları Çıkar
         candidates = self.get_all_candidates(normal, wildcards)
         
-        # 2. SIRALAMA STRATEJİSİ (ÇOK ÖNEMLİ)
-        # Sadece puana göre değil, gruba dahil olan OKEY sayısına göre de puan verelim.
-        # Amacımız okeyleri kullandırmak.
-        # Score = Gerçek Puan + (Kullanılan Okey Sayısı * 1000)
-        # Böylece içinde Okey olan gruplar listenin EN TEPESİNE çıkar ve algoritma onları seçmeye zorlanır.
-        
+        # Puanlama Stratejisi: Joker içeren ellere öncelik ver
         def weighted_score(group):
             raw_score = self.calculate_score(group)
             joker_count = sum(1 for t in group if t.get("is_wildcard"))
-            # Okey kullanılan eli öncelikli yap (Puanı suni olarak şişir, sonra düzeltiriz)
             return raw_score + (joker_count * 500) 
 
         candidates.sort(key=weighted_score, reverse=True)
-        
-        # 3. Çöz
         best_hand, total_score = self._solve(candidates, [])
-        
-        # 4. Çift Hesabı
         pairs = self.find_pairs(normal, wildcards)
         
         return {
             "best_hand": best_hand,
-            "score": total_score, # Bu gerçek puandır (_solve içinde gerçek puan toplanır)
+            "score": total_score,
             "joker_info": f"{j_col} {j_val}",
             "pairs": pairs,
             "pair_count": len(pairs)
@@ -299,15 +270,11 @@ class OkeyZeka:
     def _solve(self, candidates, used_ids):
         best_score = 0
         best_groups = []
-        
-        # Derinlik sınırı yok, tüm okeyleri denesin.
         for i, group in enumerate(candidates):
             g_ids = {t["id"] for t in group}
             if not g_ids.isdisjoint(used_ids): continue
             
-            # Puanı hesapla (Burada gerçek puanı kullanıyoruz)
             current_score = self.calculate_score(group)
-            
             new_used = used_ids + list(g_ids)
             sub_groups, sub_score = self._solve(candidates[i+1:], new_used)
             
@@ -315,5 +282,4 @@ class OkeyZeka:
             if total > best_score:
                 best_score = total
                 best_groups = [group] + sub_groups
-        
         return best_groups, best_score

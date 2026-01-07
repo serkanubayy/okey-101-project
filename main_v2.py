@@ -75,8 +75,6 @@ def ask_indicator():
     raw = input("GİRİŞ YAP >> ").strip().lower()
     
     color_map = {'r': 'Red', 'b': 'Blue', 'k': 'Black', 'o': 'Orange'}
-    
-    # Varsayılan (Hata olursa)
     selected_color = "Red"
     selected_val = 13
     
@@ -101,7 +99,7 @@ cap.set(3, 1920)
 cap.set(4, 1080)
 
 print("\n==============================")
-print(" SEKO BABA FINAL V9 (SMART)")
+print(" SEKO BABA FINAL V9.9 (GHOST BUSTER)")
 print("==============================")
 
 collecting = False
@@ -221,9 +219,16 @@ while True:
             for p in tile_id_manager.prev:
                 tid = p["id"]
                 tr = tracker.get(tid)
+                
+                # 1. Okunan Taşlar
                 if tr.number is not None and tr.color != "Unknown":
                     raw_stabilized.append({
                         "id": tid, "box": p["box"], "color": tr.color, "val": int(tr.number), "is_joker": False
+                    })
+                # 2. Okunamayanlar -> TEMP_JOKER
+                else:
+                    raw_stabilized.append({
+                        "id": tid, "box": p["box"], "color": "TEMP_JOKER", "val": 999, "is_joker": False
                     })
             
             stabilized = force_spatial_cleanup(raw_stabilized)
@@ -248,12 +253,33 @@ while True:
             
             print("\n" + "="*40)
             print(f"✅ BULUNAN TAŞLAR ({len(final_sorted)}):")
-            print(" | ".join([f"{t['color']} {t['val']}" for t in final_sorted]))
             
+            # Listeyi gösterirken TEMP_JOKER'leri belli et
+            for t in final_sorted:
+                if t['color'] == "TEMP_JOKER":
+                    print(f"?? (OKUNAMADI -> JOKER SAYILACAK)")
+                else:
+                    print(f"{t['color']} {t['val']}")
+
             if len(final_sorted) >= MIN_READY_TILES:
                 gosterge_tasi = ask_indicator()
 
-                # Zekadan sonuç sözlüğü (dict) alıyoruz artık
+                # TEMP_JOKER DÖNÜŞTÜRME
+                real_joker_color = gosterge_tasi["color"]
+                real_joker_val = gosterge_tasi["val"] + 1
+                if real_joker_val > 13: real_joker_val = 1
+                
+                fixed_count = 0
+                for t in final_sorted:
+                    if t["color"] == "TEMP_JOKER":
+                        t["color"] = real_joker_color
+                        t["val"] = real_joker_val
+                        fixed_count += 1
+                
+                if fixed_count > 0:
+                    print(f"\n⚠️ UYARI: {fixed_count} adet okunamayan taş, otomatik olarak Joker yapıldı!")
+                    print("Eğer elinizde gerçekten bu kadar Joker yoksa, kamerayı düzeltin.")
+
                 sonuc = zeka.find_best_hand(final_sorted, gosterge_tasi)
                 
                 print(f"🃏 JOKER: {sonuc['joker_info']}")
@@ -269,7 +295,7 @@ while True:
                 else:
                     print("   (Per bulunamadı)")
 
-                print("\n--- ÇİFTLER ---")
+                print("\n--- ÇİFTLER (Alternatif) ---")
                 if sonuc['pairs']:
                     for p in sonuc['pairs']:
                         print(f"   [{p[0]['color']}{p[0]['val']}] - [{p[1]['color']}{p[1]['val']}{p[1].get('virtual_str','')}]")
