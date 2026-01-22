@@ -1,40 +1,22 @@
-# ==========================
-# 1. DATASETLER (GİTMESİN)
-# ==========================
-# Binlerce resim GitHub'ı şişirir, bunları gönderme.
+# Modeller (Hem ana dizin hem de alt klasörler için)
+*.pt
+*.onnx
+*.pth
+cnn/models/*.pt
+cnn/models/*.json
+
+# Dataset ve Eğitim Artıkları
+egitim_fotolari/
 dataset/
 color_dataset/
+color_dataset/
 ham_fotolar/
-egitim_fotolari/
-tas_resimleri/
-cnn/dataset/
+dataset_kontrol.png
 
-# ==========================
-# 2. GEREKSİZ SİSTEM DOSYALARI
-# ==========================
+# Python & Sistem
 __pycache__/
-*.py[cod]
-*$py.class
+venv/
+.env
 .vscode/
 .idea/
 .DS_Store
-
-# ==========================
-# 3. EĞİTİM LOGLARI
-# ==========================
-# YOLO eğitim kayıtları çok yer kaplar
-runs/
-# İndirilen ham YOLO modelleri (Tekrar indirilebilir)
-yolov8n.pt
-yolov8s.pt
-
-# ==========================
-# 4. SANAL ORTAM (Varsa)
-# ==========================
-venv/
-env/
-.env
-
-# NOT: .pt dosyalarını engellemedik. 
-# best.pt, number_cnn_best.pt ve color_cnn.pt GİDECEK.
-# Çünkü onlar projenin beyni, onlar olmadan kod çalışmaz.
